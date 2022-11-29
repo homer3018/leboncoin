@@ -262,16 +262,16 @@ df <- df %>%
          U_shape = str_detect(Description %>%
                                 str_to_lower(), "en U"))
 
-df_bm <- df %>% 
-  filter(URL %in% url_bm$urls) %>% 
-  mutate(diff = Price - pred)
-
 France <- fra %>%
   rename(region = NAME_0,
          dept_name = NAME_2,
          dept_num = CC_2) %>% 
   mutate(dept_num = as.numeric(dept_num)) %>% 
   select(region, dept_name, dept_num)
+
+df <- df %>% select(-c(contains("region"),
+                       contains("dept_name"),
+                       contains("geometry")))
 
 df <- df %>%
   mutate(diff = Price - pred) %>% 
@@ -282,6 +282,10 @@ df <- df %>%
            floor()) %>% 
   left_join(France, by = c("dept_num")) %>% 
   distinct()
+
+df_bm <- df %>% 
+  filter(URL %in% url_bm$urls) %>% 
+  mutate(diff = Price - pred)
 
 #   ____________________________________________________________________________
 #   Export                                                                  ####
