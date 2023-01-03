@@ -220,7 +220,7 @@ new <- tib_ads_urls %>%
 if (nrow(new) > 0) {
   print(paste0(nrow(new), " new ads to fetch."))
   tib_ads <- map(
-    tib_ads_urls$urls[1:50],
+    new$urls %>% head(50),
     safely(ad_info)
   ) %>%
     map("result") %>%
@@ -338,7 +338,7 @@ fra %>%
           color = "white",
           size = 0.2) +
   geom_sf(data = df_bm %>% 
-            filter(diff <=2000),
+            filter(diff <=20000),
           aes(geometry = geometry,
               fill = dept_name),
           alpha = 0.3,
@@ -355,13 +355,13 @@ fra %>%
              aes(x = V1, y = V2),
              col = "red") +
   geom_point(data = df_bm %>% 
-               filter(diff <=2000),
+               filter(diff <=20000),
              aes(x = longitude, y = latitude),
              shape = 21,
              size = 5,
              col = "red") +
   geom_point(data = df %>% 
-               filter(str_detect(URL, "2259866420")),
+               filter(str_detect(URL, "2272003155")),
              aes(x = longitude, y = latitude),
              shape = 21,
              size = 7,
@@ -414,13 +414,13 @@ df_bm %>%
 
 explore <- df %>%
   # filter(diff <= 2000) %>% 
-  # filter(dept_name %in% c("Savoie", "Doubs", "Jura", "Côte-d'Or")) %>% 
+  filter(dept_name %in% c("Seine-Saint-Denis", "Seine-et-Marne", "Côtes-d'Armor", "Sarthe")) %>%
   # filter(Distance >= 150) %>% 
   # filter(Distance <= 200) %>% 
-  filter(bunk, solar_panel) %>% 
-  filter(Year %in% 1999:2008) %>% 
-  filter(Kms <= 200000) %>% 
-  filter(Kms >= 50000) %>% 
+  # filter(bunk, solar_panel) %>% 
+  # filter(Year %in% 1999:2008) %>% 
+  # filter(Kms <= 200000) %>% 
+  # filter(Kms >= 50000) %>% 
   arrange(Distance)
 
 explore %>% 
