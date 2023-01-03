@@ -6,6 +6,7 @@ library(knitr)
 library(tictoc)
 library(osmdata)
 library(sf)
+library(osrm)
 
 #   ____________________________________________________________________________
 #   Locals                                                                  ####
@@ -429,21 +430,27 @@ explore %>%
 #   ____________________________________________________________________________
 #   Explore around particular location                                      ####
 
-other_coord_table <- osmdata::getbb("Libourne 33500")
+df_points <- st_as_sf(df %>%
+                        filter(!is.na(longitude)),
+                      coords = c("longitude", "latitude"))
+st_crs(df_points) <- 4326
+
+other_coord_table <- osmdata::getbb("Noisy-le-Grand 93160")
+other_coord_table <- osmdata::getbb("Bonneval 28800")
 other_latitude <- (other_coord_table[2, 1] + other_coord_table[2, 2]) / 2
 other_longitude <- (other_coord_table[1, 1] + other_coord_table[1, 2]) / 2
 other_coord <<- c(other_longitude, other_latitude)
 
-explore <- df %>% 
-  mutate(Distance_other = NA_real_)
-1:nrow(df) %>% 
-  walk(function(x) {
-    dist = geosphere::distGeo(c(df$longitude[x], df$latitude[x]), other_coord) / 1000
-    explore$Distance_other[x] <<- dist
-  })
+pers_route <- osrmRoute(
+  src = c("A", home_coord),
+  dst = c("B", other_coord),
+  returnclass = "sf",
+  overview = "full"
+)
 
-explore <- explore %>% 
-  filter(Distance_other <= 100)
+buffer <- st_buffer(pers_route, 35000)
+
+along_route <- st_intersection(df_points, buffer)
 
 fra %>% 
   st_transform(crs = 4326) %>% 
@@ -451,8 +458,10 @@ fra %>%
   geom_sf(show.legend = FALSE,
           color = "white",
           size = 0.2) +
-  geom_sf(data = explore,
-          aes(geometry = geometry,
+  geom_sf(data = along_route %>%
+            left_join(df, by = c("URL", "Title", "Price", "Year", "Kms", "Description", "Publication", "location", "Distance", "bunk", "solar_panel", "hitch", "camera", "hp", "twin_wheels",
+                                 "roof", "U_shape", "pred", "diff", "dept_num", "region", "dept_name")),
+          aes(geometry = geometry.y,
               fill = dept_name),
           alpha = 0.3,
           color = "white",
@@ -472,23 +481,35 @@ fra %>%
                as_tibble(),
              aes(x = V1, y = V2),
              col = "yellow") +
-  geom_point(data = explore,
+  geom_point(data = along_route %>%
+               left_join(df, by = c("URL", "Title", "Price", "Year", "Kms", "Description", "Publication", "location", "Distance", "bunk", "solar_panel", "hitch", "camera", "hp", "twin_wheels",
+                                    "roof", "U_shape", "pred", "diff", "dept_num", "region", "dept_name")),
              aes(x = longitude, y = latitude),
              shape = 21,
              size = 5,
              col = "red") +
   geom_point(data = df %>% 
-               filter(str_detect(URL, "2256361528")),
+               filter(str_detect(URL, "2272003155")),
              aes(x = longitude, y = latitude),
              shape = 21,
              size = 7,
              col = "blue") +
+  geom_sf(data = st_geometry(pers_route),
+          inherit.aes = FALSE,
+          col = "red",
+          size = 1) +
+  geom_sf(data = st_geometry(buffer),
+          inherit.aes = FALSE,
+          fill = "red",
+          col = "red",
+          size = 1,
+          alpha = 0.1) +
   scale_color_viridis_c() +
   theme_minimal() +
   coord_sf(datum = NA, expand = FALSE) +
   theme(panel.grid = element_blank(),
         axis.title = element_blank())
 
-explore %>% 
+along_route %>% 
   pull(URL) %>% 
   walk(browseURL)
