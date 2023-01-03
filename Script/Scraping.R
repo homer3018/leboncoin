@@ -6,6 +6,7 @@ library(knitr)
 library(tictoc)
 library(osmdata)
 library(sf)
+library(osrm)
 
 #   ____________________________________________________________________________
 #   Locals                                                                  ####
@@ -53,7 +54,7 @@ ads_by_page <- function(page) {
 
 ads_in_bm <- function(html) {
   links <- html %>%
-    html_elements(".egdKTe") %>% 
+    html_elements(".HauhL") %>% 
     html_attr("href") %>%
     na.omit()
   tib <- tibble(urls = str_c("https://www.leboncoin.fr", links))
@@ -219,7 +220,7 @@ new <- tib_ads_urls %>%
 if (nrow(new) > 0) {
   print(paste0(nrow(new), " new ads to fetch."))
   tib_ads <- map(
-    tib_ads_urls$urls[1:50],
+    new$urls %>% head(50),
     safely(ad_info)
   ) %>%
     map("result") %>%
@@ -262,16 +263,16 @@ df <- df %>%
          U_shape = str_detect(Description %>%
                                 str_to_lower(), "en U"))
 
-df_bm <- df %>% 
-  filter(URL %in% url_bm$urls) %>% 
-  mutate(diff = Price - pred)
-
 France <- fra %>%
   rename(region = NAME_0,
          dept_name = NAME_2,
          dept_num = CC_2) %>% 
   mutate(dept_num = as.numeric(dept_num)) %>% 
   select(region, dept_name, dept_num)
+
+df <- df %>% select(-c(contains("region"),
+                       contains("dept_name"),
+                       contains("geometry")))
 
 df <- df %>%
   mutate(diff = Price - pred) %>% 
@@ -282,6 +283,10 @@ df <- df %>%
            floor()) %>% 
   left_join(France, by = c("dept_num")) %>% 
   distinct()
+
+df_bm <- df %>% 
+  filter(URL %in% url_bm$urls) %>% 
+  mutate(diff = Price - pred)
 
 #   ____________________________________________________________________________
 #   Export                                                                  ####
@@ -333,7 +338,7 @@ fra %>%
           color = "white",
           size = 0.2) +
   geom_sf(data = df_bm %>% 
-            filter(diff <=2000),
+            filter(diff <=20000),
           aes(geometry = geometry,
               fill = dept_name),
           alpha = 0.3,
@@ -350,13 +355,13 @@ fra %>%
              aes(x = V1, y = V2),
              col = "red") +
   geom_point(data = df_bm %>% 
-               filter(diff <=2000),
+               filter(diff <=20000),
              aes(x = longitude, y = latitude),
              shape = 21,
              size = 5,
              col = "red") +
   geom_point(data = df %>% 
-               filter(str_detect(URL, "2259866420")),
+               filter(str_detect(URL, "2272003155")),
              aes(x = longitude, y = latitude),
              shape = 21,
              size = 7,
@@ -409,13 +414,13 @@ df_bm %>%
 
 explore <- df %>%
   # filter(diff <= 2000) %>% 
-  # filter(dept_name %in% c("Savoie", "Doubs", "Jura", "Côte-d'Or")) %>% 
+  filter(dept_name %in% c("Seine-Saint-Denis", "Seine-et-Marne", "Côtes-d'Armor", "Sarthe")) %>%
   # filter(Distance >= 150) %>% 
   # filter(Distance <= 200) %>% 
-  filter(bunk, solar_panel) %>% 
-  filter(Year %in% 1999:2008) %>% 
-  filter(Kms <= 200000) %>% 
-  filter(Kms >= 50000) %>% 
+  # filter(bunk, solar_panel) %>% 
+  # filter(Year %in% 1999:2008) %>% 
+  # filter(Kms <= 200000) %>% 
+  # filter(Kms >= 50000) %>% 
   arrange(Distance)
 
 explore %>% 
@@ -425,21 +430,27 @@ explore %>%
 #   ____________________________________________________________________________
 #   Explore around particular location                                      ####
 
-other_coord_table <- osmdata::getbb("Libourne 33500")
+df_points <- st_as_sf(df %>%
+                        filter(!is.na(longitude)),
+                      coords = c("longitude", "latitude"))
+st_crs(df_points) <- 4326
+
+other_coord_table <- osmdata::getbb("Noisy-le-Grand 93160")
+other_coord_table <- osmdata::getbb("Bonneval 28800")
 other_latitude <- (other_coord_table[2, 1] + other_coord_table[2, 2]) / 2
 other_longitude <- (other_coord_table[1, 1] + other_coord_table[1, 2]) / 2
 other_coord <<- c(other_longitude, other_latitude)
 
-explore <- df %>% 
-  mutate(Distance_other = NA_real_)
-1:nrow(df) %>% 
-  walk(function(x) {
-    dist = geosphere::distGeo(c(df$longitude[x], df$latitude[x]), other_coord) / 1000
-    explore$Distance_other[x] <<- dist
-  })
+pers_route <- osrmRoute(
+  src = c("A", home_coord),
+  dst = c("B", other_coord),
+  returnclass = "sf",
+  overview = "full"
+)
 
-explore <- explore %>% 
-  filter(Distance_other <= 100)
+buffer <- st_buffer(pers_route, 35000)
+
+along_route <- st_intersection(df_points, buffer)
 
 fra %>% 
   st_transform(crs = 4326) %>% 
@@ -447,8 +458,10 @@ fra %>%
   geom_sf(show.legend = FALSE,
           color = "white",
           size = 0.2) +
-  geom_sf(data = explore,
-          aes(geometry = geometry,
+  geom_sf(data = along_route %>%
+            left_join(df, by = c("URL", "Title", "Price", "Year", "Kms", "Description", "Publication", "location", "Distance", "bunk", "solar_panel", "hitch", "camera", "hp", "twin_wheels",
+                                 "roof", "U_shape", "pred", "diff", "dept_num", "region", "dept_name")),
+          aes(geometry = geometry.y,
               fill = dept_name),
           alpha = 0.3,
           color = "white",
@@ -468,23 +481,35 @@ fra %>%
                as_tibble(),
              aes(x = V1, y = V2),
              col = "yellow") +
-  geom_point(data = explore,
+  geom_point(data = along_route %>%
+               left_join(df, by = c("URL", "Title", "Price", "Year", "Kms", "Description", "Publication", "location", "Distance", "bunk", "solar_panel", "hitch", "camera", "hp", "twin_wheels",
+                                    "roof", "U_shape", "pred", "diff", "dept_num", "region", "dept_name")),
              aes(x = longitude, y = latitude),
              shape = 21,
              size = 5,
              col = "red") +
   geom_point(data = df %>% 
-               filter(str_detect(URL, "2256361528")),
+               filter(str_detect(URL, "2272003155")),
              aes(x = longitude, y = latitude),
              shape = 21,
              size = 7,
              col = "blue") +
+  geom_sf(data = st_geometry(pers_route),
+          inherit.aes = FALSE,
+          col = "red",
+          size = 1) +
+  geom_sf(data = st_geometry(buffer),
+          inherit.aes = FALSE,
+          fill = "red",
+          col = "red",
+          size = 1,
+          alpha = 0.1) +
   scale_color_viridis_c() +
   theme_minimal() +
   coord_sf(datum = NA, expand = FALSE) +
   theme(panel.grid = element_blank(),
         axis.title = element_blank())
 
-explore %>% 
+along_route %>% 
   pull(URL) %>% 
   walk(browseURL)
