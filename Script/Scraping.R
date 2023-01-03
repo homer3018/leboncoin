@@ -54,7 +54,7 @@ ads_by_page <- function(page) {
 
 ads_in_bm <- function(html) {
   links <- html %>%
-    html_elements(".egdKTe") %>% 
+    html_elements(".HauhL") %>% 
     html_attr("href") %>%
     na.omit()
   tib <- tibble(urls = str_c("https://www.leboncoin.fr", links))
